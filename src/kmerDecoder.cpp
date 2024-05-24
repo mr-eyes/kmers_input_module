@@ -28,7 +28,7 @@ Hasher* kmerDecoder::initHasher(hashingModes HM, int kSize)
 {
     switch (HM) {
         case integer_hasher:return new IntegerHasher(kSize);
-        case mumur_hasher:return new MumurHasher(2038074761);
+        case mumur_hasher:return new MumurHasher(42);
         case TwoBits_hasher:return new TwoBitsHasher(kSize);
         case nonCanonicalInteger_Hasher:return new noncanonical_IntegerHasher(kSize);
         case protein_hasher:return new aaHasher_default(kSize);

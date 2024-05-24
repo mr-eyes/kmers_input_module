@@ -28,15 +28,6 @@
 using namespace std;
 
 
-//-----------------------------------------------------------------------------
-// MurmurHash2, 64-bit versions, by Austin Appleby
-
-// The same caveats as 32-bit MurmurHash2 apply here - beware of alignment
-// and endian-ness issues if used across multiple platforms.
-
-
-// 64-bit hash for 64-bit platforms
-
 inline string str_canonical(const string& kmer) {
     auto kmer_rev = kmer;
     std::reverse(kmer_rev.begin(), kmer_rev.end());
@@ -49,108 +40,112 @@ inline string str_canonical(const string& kmer) {
     return kmer < kmer_rev ? kmer : kmer_rev;
 }
 
-uint64_t MurmurHash64A ( const void * key, int len, unsigned int seed )
-{
-	const uint64_t m = 0xc6a4a7935bd1e995;
-	const int r = 47;
+// MurmurHash3 was written by Austin Appleby, and is placed in the public domain.
+void MurmurHash3_x64_128(const void *key, int len, unsigned int seed, void *out) {
+    const uint8_t *data = (const uint8_t *)key;
+    const int nblocks = len / 16;
+    uint64_t h1 = seed;
+    uint64_t h2 = seed;
 
-	uint64_t h = seed ^ (len * m);
+    const uint64_t c1 = 0x87c37b91114253d5;
+    const uint64_t c2 = 0x4cf5ad432745937f;
 
-	const uint64_t * data = (const uint64_t *)key;
-	const uint64_t * end = data + (len/8);
+    // Body
+    const uint64_t *blocks = (const uint64_t *)(data);
+    for (int i = 0; i < nblocks; i++) {
+        uint64_t k1 = blocks[i * 2 + 0];
+        uint64_t k2 = blocks[i * 2 + 1];
 
-	while(data != end)
-	{
-		uint64_t k = *data++;
+        k1 *= c1;
+        k1 = (k1 << 31) | (k1 >> (64 - 31));
+        k1 *= c2;
+        h1 ^= k1;
 
-		k *= m; 
-		k ^= k >> r; 
-		k *= m; 
-		
-		h ^= k;
-		h *= m; 
-	}
+        h1 = (h1 << 27) | (h1 >> (64 - 27));
+        h1 += h2;
+        h1 = h1 * 5 + 0x52dce729;
 
-	const unsigned char * data2 = (const unsigned char*)data;
+        k2 *= c2;
+        k2 = (k2 << 33) | (k2 >> (64 - 33));
+        k2 *= c1;
+        h2 ^= k2;
 
-	switch(len & 7)
-	{
-	case 7: h ^= uint64_t(data2[6]) << 48;
-	case 6: h ^= uint64_t(data2[5]) << 40;
-	case 5: h ^= uint64_t(data2[4]) << 32;
-	case 4: h ^= uint64_t(data2[3]) << 24;
-	case 3: h ^= uint64_t(data2[2]) << 16;
-	case 2: h ^= uint64_t(data2[1]) << 8;
-	case 1: h ^= uint64_t(data2[0]);
-	        h *= m;
-	};
- 
-	h ^= h >> r;
-	h *= m;
-	h ^= h >> r;
+        h2 = (h2 << 31) | (h2 >> (64 - 31));
+        h2 += h1;
+        h2 = h2 * 5 + 0x38495ab5;
+    }
 
-	return h;
-} 
+    // Tail
+    const uint8_t *tail = (const uint8_t *)(data + nblocks * 16);
+    uint64_t k1 = 0;
+    uint64_t k2 = 0;
+
+    switch (len & 15) {
+    case 15: k2 ^= ((uint64_t)tail[14]) << 48;
+    case 14: k2 ^= ((uint64_t)tail[13]) << 40;
+    case 13: k2 ^= ((uint64_t)tail[12]) << 32;
+    case 12: k2 ^= ((uint64_t)tail[11]) << 24;
+    case 11: k2 ^= ((uint64_t)tail[10]) << 16;
+    case 10: k2 ^= ((uint64_t)tail[9]) << 8;
+    case 9: k2 ^= ((uint64_t)tail[8]) << 0;
+        k2 *= c2;
+        k2 = (k2 << 33) | (k2 >> (64 - 33));
+        k2 *= c1;
+        h2 ^= k2;
+
+    case 8: k1 ^= ((uint64_t)tail[7]) << 56;
+    case 7: k1 ^= ((uint64_t)tail[6]) << 48;
+    case 6: k1 ^= ((uint64_t)tail[5]) << 40;
+    case 5: k1 ^= ((uint64_t)tail[4]) << 32;
+    case 4: k1 ^= ((uint64_t)tail[3]) << 24;
+    case 3: k1 ^= ((uint64_t)tail[2]) << 16;
+    case 2: k1 ^= ((uint64_t)tail[1]) << 8;
+    case 1: k1 ^= ((uint64_t)tail[0]) << 0;
+        k1 *= c1;
+        k1 = (k1 << 31) | (k1 >> (64 - 31));
+        k1 *= c2;
+        h1 ^= k1;
+    };
+
+    // Finalization
+    h1 ^= len;
+    h2 ^= len;
+
+    h1 += h2;
+    h2 += h1;
+
+    h1 ^= h1 >> 33;
+    h1 *= 0xff51afd7ed558ccd;
+    h1 ^= h1 >> 33;
+    h1 *= 0xc4ceb9fe1a85ec53;
+    h1 ^= h1 >> 33;
+
+    h2 ^= h2 >> 33;
+    h2 *= 0xff51afd7ed558ccd;
+    h2 ^= h2 >> 33;
+    h2 *= 0xc4ceb9fe1a85ec53;
+    h2 ^= h2 >> 33;
+
+    h1 += h2;
+    h2 += h1;
+
+    ((uint64_t *)out)[0] = h1;
+    ((uint64_t *)out)[1] = h2;
+}
 
 uint64_t MumurHasher::hash(const string & kmer) {
     string canonical_kmer = str_canonical(kmer);
     const char *c = canonical_kmer.c_str();
-    return MurmurHash64A(c, canonical_kmer.size(), this->seed);
+    
+    uint64_t hash_output[2];
+    MurmurHash3_x64_128(canonical_kmer.data(), canonical_kmer.size(), seed, hash_output);
+
+    int64_t hash = static_cast<int64_t>(hash_output[0]);
+    if (hash < 0) hash += static_cast<uint64_t>(1) << 64;
+
+    return static_cast<uint64_t>(hash);
+  
 }
-
-
-// // 64-bit hash for 32-bit platforms
-//
-// uint64_t HashUtil::MurmurHash64B ( const void * key, int len, unsigned int seed )
-// {
-// 	const unsigned int m = 0x5bd1e995;
-// 	const int r = 24;
-//
-// 	unsigned int h1 = seed ^ len;
-// 	unsigned int h2 = 0;
-//
-// 	const unsigned int * data = (const unsigned int *)key;
-//
-// 	while(len >= 8)
-// 	{
-// 		unsigned int k1 = *data++;
-// 		k1 *= m; k1 ^= k1 >> r; k1 *= m;
-// 		h1 *= m; h1 ^= k1;
-// 		len -= 4;
-//
-// 		unsigned int k2 = *data++;
-// 		k2 *= m; k2 ^= k2 >> r; k2 *= m;
-// 		h2 *= m; h2 ^= k2;
-// 		len -= 4;
-// 	}
-//
-// 	if(len >= 4)
-// 	{
-// 		unsigned int k1 = *data++;
-// 		k1 *= m; k1 ^= k1 >> r; k1 *= m;
-// 		h1 *= m; h1 ^= k1;
-// 		len -= 4;
-// 	}
-//
-// 	switch(len)
-// 	{
-// 		case 3: h2 ^= ((unsigned char*)data)[2] << 16;
-// 		case 2: h2 ^= ((unsigned char*)data)[1] << 8;
-// 		case 1: h2 ^= ((unsigned char*)data)[0];
-// 						h2 *= m;
-// 	};
-//
-// 	h1 ^= h2 >> 18; h1 *= m;
-// 	h2 ^= h1 >> 22; h2 *= m;
-// 	h1 ^= h2 >> 17; h1 *= m;
-// 	h2 ^= h1 >> 19; h2 *= m;
-//
-// 	uint64_t h = h1;
-//
-// 	h = (h << 32) | h2;
-//
-// 	return h;
-// }
 
 IntegerHasher::IntegerHasher(uint64_t kSize) {
     this->kSize = kSize;
